@@ -10,11 +10,9 @@ import (
 // Request contains essential fields for any request: a Configuration, a base image, and an
 // optional runtime image.
 type Request struct {
-	BaseImage string
-
+	BaseImage     string
 	DockerSocket  string
 	DockerTimeout int
-	WorkingDir    string
 	Verbose       bool
 }
 
@@ -25,8 +23,9 @@ type requestHandler struct {
 }
 
 type STIResult struct {
-	Success  bool
-	Messages []string
+	Success    bool
+	Messages   []string
+	WorkingDir string
 }
 
 // Returns a new handler for a given request.

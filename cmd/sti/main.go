@@ -105,7 +105,6 @@ func Execute() {
 	}
 	buildCmd.Flags().BoolVar(&(buildReq.Clean), "clean", false, "Perform a clean build")
 	buildCmd.Flags().BoolVar(&(buildReq.RemovePreviousImage), "rm", false, "Remove the previous image during incremental builds")
-	buildCmd.Flags().StringVar(&(req.WorkingDir), "dir", "tempdir", "Directory where generated Dockerfiles and other support scripts are created")
 	buildCmd.Flags().StringVarP(&envString, "env", "e", "", "Specify an environment var NAME=VALUE,NAME2=VALUE2,...")
 	buildCmd.Flags().StringVarP(&(buildReq.Ref), "ref", "r", "", "Specify a ref to check-out")
 	buildCmd.Flags().StringVar(&(buildReq.CallbackUrl), "callbackUrl", "", "Specify a URL to invoke via HTTP POST upon build completion")
@@ -135,18 +134,13 @@ func Execute() {
 			envs, _ := parseEnvs(envString)
 			buildReq.Environment = envs
 
-			res, err := sti.Usage(buildReq)
+			err := sti.Usage(buildReq)
 			if err != nil {
 				fmt.Printf("An error occured: %s\n", err.Error())
 				os.Exit(1)
 			}
-
-			for _, message := range res.Messages {
-				fmt.Println(message)
-			}
 		},
 	}
-	usageCmd.Flags().StringVar(&(req.WorkingDir), "dir", "tempdir", "Directory where generated Dockerfiles and other support scripts are created")
 	usageCmd.Flags().StringVarP(&envString, "env", "e", "", "Specify an environment var NAME=VALUE,NAME2=VALUE2,...")
 	usageCmd.Flags().StringVarP(&(buildReq.ScriptsUrl), "scripts", "s", "", "Specify a URL for the assemble and run scripts")
 

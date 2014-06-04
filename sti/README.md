@@ -117,7 +117,6 @@ Building a Deployable Image
     Available Flags:
          --callbackUrl="": Specify a URL to invoke via HTTP POST upon build completion
          --clean=false: Perform a clean build
-         --dir="tempdir": Directory where generated Dockerfiles and other support scripts are created
      -e, --env="": Specify an environment var NAME=VALUE,NAME2=VALUE2,...
      -r, --ref="": Specify a ref to check-out
      -s, --scripts="": Specify a URL for the assemble, run, and save-artifacts scripts
