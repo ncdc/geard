@@ -150,10 +150,12 @@ func (req *installContainer) Execute(resp jobs.Response) {
 
 	// write the definition unit file
 	args := csystemd.ContainerUnit{
-		Id:       id,
-		Image:    req.Image,
-		PortSpec: portSpec,
-		Slice:    sliceName + ".slice",
+		Id:            id,
+		Image:         req.Image,
+		PortSpec:      portSpec,
+		VolumeSpec:    req.VolumeConfig.ToVolumeSpec(),
+		BindMountSpec: req.VolumeConfig.ToBindMountSpec(),
+		Slice:         sliceName + ".slice",
 
 		Isolate: req.Isolate,
 
