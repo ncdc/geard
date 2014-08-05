@@ -148,13 +148,19 @@ func (req *installContainer) Execute(resp jobs.Response) {
 		}
 	}
 
+	var volumeSpec, bindMountSpec string
+	if req.VolumeConfig != nil {
+		volumeSpec = req.VolumeConfig.ToVolumeSpec()
+		bindMountSpec = req.VolumeConfig.ToBindMountSpec()
+	}
+
 	// write the definition unit file
 	args := csystemd.ContainerUnit{
 		Id:            id,
 		Image:         req.Image,
 		PortSpec:      portSpec,
-		VolumeSpec:    req.VolumeConfig.ToVolumeSpec(),
-		BindMountSpec: req.VolumeConfig.ToBindMountSpec(),
+		VolumeSpec:    volumeSpec,
+		BindMountSpec: bindMountSpec,
 		Slice:         sliceName + ".slice",
 
 		Isolate: req.Isolate,
