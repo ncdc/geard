@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fsouza/go-dockerclient"
+	"github.com/openshift/geard/vendor/src/github.com/fsouza/go-dockerclient"
 )
 
 // SchemeReaders create an io.Reader from the given url.
@@ -235,8 +235,8 @@ func removeDirectory(dir string, verbose bool) {
 	}
 }
 
-func createWorkingDirectory() (directory string, err error) {
-	directory, err = ioutil.TempDir("", "sti")
+func createWorkingDirectory(baseDirectory string) (directory string, err error) {
+	directory, err = ioutil.TempDir(baseDirectory, "sti")
 	if err != nil {
 		return "", fmt.Errorf("Error creating temporary directory '%s': %s\n", directory, err.Error())
 	}

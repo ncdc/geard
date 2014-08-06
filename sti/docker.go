@@ -3,7 +3,7 @@ package sti
 import (
 	"log"
 
-	"github.com/fsouza/go-dockerclient"
+	"github.com/openshift/geard/vendor/src/github.com/fsouza/go-dockerclient"
 )
 
 // Determines whether the supplied image is in the local registry.

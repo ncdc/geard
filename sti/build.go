@@ -11,13 +11,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/fsouza/go-dockerclient"
+	"github.com/openshift/geard/vendor/src/github.com/fsouza/go-dockerclient"
 )
 
 const (
 	SVirtSandboxFileLabel = "system_u:object_r:svirt_sandbox_file_t:s0"
-	ContainerInitDirName  = ".sti.init"
-	ContainerInitDirPath  = "/" + ContainerInitDirName
 )
 
 // STIRequest contains essential fields for any request: a Configuration, a base image, and an
@@ -27,6 +25,7 @@ type STIRequest struct {
 	DockerSocket        string
 	DockerTimeout       int
 	Verbose             bool
+	WorkingDirBase      string
 	PreserveWorkingDir  bool
 	Source              string
 	Ref                 string
@@ -81,7 +80,7 @@ func Build(req *STIRequest) (result *STIResult, err error) {
 		return nil, err
 	}
 
-	h.request.workingDir, err = createWorkingDirectory()
+	h.request.workingDir, err = createWorkingDirectory(h.request.WorkingDirBase)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +95,7 @@ func Build(req *STIRequest) (result *STIResult, err error) {
 		WorkingDir: h.request.workingDir,
 	}
 
-	dirs := []string{"tmp", "scripts", "defaultScripts"}
+	dirs := []string{"scripts", "defaultScripts"}
 	for _, v := range dirs {
 		err := os.Mkdir(filepath.Join(h.request.workingDir, v), 0700)
 		if err != nil {
@@ -147,14 +146,6 @@ func Build(req *STIRequest) (result *STIResult, err error) {
 }
 
 func (h requestHandler) buildInternal() (messages []string, imageID string, err error) {
-	volumeMap := make(map[string]struct{})
-	volumeMap["/tmp/src"] = struct{}{}
-	volumeMap["/tmp/scripts"] = struct{}{}
-	volumeMap["/tmp/defaultScripts"] = struct{}{}
-	if h.request.incremental {
-		volumeMap["/tmp/artifacts"] = struct{}{}
-	}
-
 	if h.request.Verbose {
 		log.Printf("Using image name %s", h.request.BaseImage)
 	}
@@ -190,8 +181,7 @@ func (h requestHandler) buildInternal() (messages []string, imageID string, err 
 	if hasUser {
 		// run setup commands as root, then switch to container user
 		// to execute the assemble script.
-		cmd = []string{filepath.Join(ContainerInitDirPath, "init.sh")}
-		volumeMap[ContainerInitDirPath] = struct{}{}
+		cmd = []string{"/tmp/sti/init.sh"}
 	} else if h.request.usage {
 		// invoke assemble script with usage argument
 		log.Println("Assemble script usage requested, invoking assemble script help")
@@ -201,7 +191,7 @@ func (h requestHandler) buildInternal() (messages []string, imageID string, err 
 		cmd = []string{"/bin/sh", "-c", "chmod 700 " + assemblePath + " && " + assemblePath + " && mkdir -p /opt/sti/bin && cp " + runPath + " /opt/sti/bin && chmod 700 /opt/sti/bin/run"}
 	}
 
-	config := docker.Config{User: "root", Image: h.request.BaseImage, Cmd: cmd, Volumes: volumeMap}
+	config := docker.Config{User: "root", Image: h.request.BaseImage, Cmd: cmd}
 
 	var cmdEnv []string
 	if len(h.request.Environment) > 0 {
@@ -220,27 +210,10 @@ func (h requestHandler) buildInternal() (messages []string, imageID string, err 
 	}
 	defer h.removeContainer(container.ID)
 
-	binds := []string{filepath.Join(h.request.workingDir, "src") + ":/tmp/src"}
-	binds = append(binds, filepath.Join(h.request.workingDir, "defaultScripts")+":/tmp/defaultScripts")
-	binds = append(binds, filepath.Join(h.request.workingDir, "scripts")+":/tmp/scripts")
-	if h.request.incremental {
-		binds = append(binds, filepath.Join(h.request.workingDir, "artifacts")+":/tmp/artifacts")
-	}
+	binds := []string{h.request.workingDir + ":/tmp/sti"}
 
 	if hasUser {
-		containerInitDir := filepath.Join(h.request.workingDir, "tmp", ContainerInitDirName)
-		err = os.MkdirAll(containerInitDir, 0700)
-		if err != nil {
-			return
-		}
-
-		err = chcon(SVirtSandboxFileLabel, containerInitDir, true)
-		if err != nil {
-			err = fmt.Errorf("unable to set SELinux context: %s", err.Error())
-			return
-		}
-
-		buildScriptPath := filepath.Join(containerInitDir, "init.sh")
+		buildScriptPath := filepath.Join(h.request.workingDir, "init.sh")
 		var buildScript *os.File
 		buildScript, err = os.OpenFile(buildScriptPath, os.O_CREATE|os.O_RDWR, 0700)
 		if err != nil {
@@ -260,8 +233,6 @@ func (h requestHandler) buildInternal() (messages []string, imageID string, err 
 			return
 		}
 		buildScript.Close()
-
-		binds = append(binds, containerInitDir+":"+ContainerInitDirPath)
 	}
 
 	// only run chcon if it's not an incremental build, as saveArtifacts will have
@@ -448,26 +419,24 @@ func (h requestHandler) getDefaultUrl() (string, error) {
 }
 
 func (h requestHandler) determineScriptPath(script string) string {
-	contextDir := h.request.workingDir
-
-	if _, err := os.Stat(filepath.Join(contextDir, "scripts", script)); err == nil {
+	if _, err := os.Stat(filepath.Join(h.request.workingDir, "scripts", script)); err == nil {
 		// if the invoker provided a script via a url, prefer that.
 		if h.request.Verbose {
 			log.Printf("Using %s script from user provided url", script)
 		}
-		return filepath.Join("/tmp", "scripts", script)
-	} else if _, err := os.Stat(filepath.Join(contextDir, "src", ".sti", "bin", script)); err == nil {
+		return filepath.Join("/tmp/sti/scripts", script)
+	} else if _, err := os.Stat(filepath.Join(h.request.workingDir, "src/.sti/bin", script)); err == nil {
 		// if they provided one in the app source, that is preferred next
 		if h.request.Verbose {
 			log.Printf("Using %s script from application source", script)
 		}
-		return filepath.Join("/tmp", "src", ".sti", "bin", script)
-	} else if _, err := os.Stat(filepath.Join(contextDir, "defaultScripts", script)); err == nil {
+		return filepath.Join("/tmp/sti/src/.sti/bin", script)
+	} else if _, err := os.Stat(filepath.Join(h.request.workingDir, "defaultScripts", script)); err == nil {
 		// lowest priority: script provided by default url reference in the image.
 		if h.request.Verbose {
 			log.Printf("Using %s script from image default url", script)
 		}
-		return filepath.Join("/tmp", "defaultScripts", script)
+		return filepath.Join("/tmp/sti/defaultScripts", script)
 	}
 	return ""
 }
@@ -519,20 +488,13 @@ func (h requestHandler) saveArtifacts() error {
 		log.Printf("Artifact image hasUser=%t, user is %s\n", hasUser, user)
 	}
 
-	volumeMap := make(map[string]struct{})
-	volumeMap["/tmp/artifacts"] = struct{}{}
-	volumeMap["/tmp/src"] = struct{}{}
-	volumeMap["/tmp/scripts"] = struct{}{}
-	volumeMap["/tmp/defaultScripts"] = struct{}{}
-
 	cmd := []string{"/bin/sh", "-c", "chmod 777 " + saveArtifactsScriptPath + " && " + saveArtifactsScriptPath}
 
 	if hasUser {
-		volumeMap[ContainerInitDirPath] = struct{}{}
-		cmd = []string{filepath.Join(ContainerInitDirPath, "init.sh")}
+		cmd = []string{"/tmp/sti/init.sh"}
 	}
 
-	config := docker.Config{User: "root", Image: image, Cmd: cmd, Volumes: volumeMap}
+	config := docker.Config{User: "root", Image: image, Cmd: cmd}
 	if h.request.Verbose {
 		log.Printf("Creating container using config: %+v\n", config)
 	}
@@ -542,10 +504,7 @@ func (h requestHandler) saveArtifacts() error {
 	}
 	defer h.removeContainer(container.ID)
 
-	binds := []string{artifactTmpDir + ":/tmp/artifacts"}
-	binds = append(binds, filepath.Join(h.request.workingDir, "src")+":/tmp/src")
-	binds = append(binds, filepath.Join(h.request.workingDir, "defaultScripts")+":/tmp/defaultScripts")
-	binds = append(binds, filepath.Join(h.request.workingDir, "scripts")+":/tmp/scripts")
+	binds := []string{h.request.workingDir + ":/tmp/sti"}
 
 	if hasUser {
 		// TODO: add custom errors?
@@ -558,21 +517,7 @@ func (h requestHandler) saveArtifacts() error {
 		}
 		defer stubFile.Close()
 
-		containerInitDir := filepath.Join(h.request.workingDir, "tmp", ContainerInitDirName)
-		if h.request.Verbose {
-			log.Printf("Creating dir %+v\n", containerInitDir)
-		}
-		err = os.MkdirAll(containerInitDir, 0700)
-		if err != nil {
-			return err
-		}
-
-		err = chcon(SVirtSandboxFileLabel, containerInitDir, true)
-		if err != nil {
-			return fmt.Errorf("unable to set SELinux context: %s", err.Error())
-		}
-
-		initScriptPath := filepath.Join(containerInitDir, "init.sh")
+		initScriptPath := filepath.Join(h.request.workingDir, "init.sh")
 		if h.request.Verbose {
 			log.Printf("Writing %+v\n", initScriptPath)
 		}
@@ -589,8 +534,6 @@ func (h requestHandler) saveArtifacts() error {
 			return err
 		}
 		initScript.Close()
-
-		binds = append(binds, containerInitDir+":"+ContainerInitDirPath)
 	}
 
 	err = chcon(SVirtSandboxFileLabel, h.request.workingDir, true)

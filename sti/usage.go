@@ -16,7 +16,7 @@ func Usage(req *STIRequest) error {
 		return err
 	}
 
-	h.request.workingDir, err = createWorkingDirectory()
+	h.request.workingDir, err = createWorkingDirectory(h.request.WorkingDirBase)
 	if err != nil {
 		return err
 	}

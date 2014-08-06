@@ -50,16 +50,17 @@ func Execute() {
 	req = &sti.STIRequest{}
 
 	stiCmd := &cobra.Command{
-		Use:  "sti",
-		Long: "Source-to-images (STI) is a tool for building repeatable docker images.\n\n"+
-			  "A command line interface that injects and assembles an application source into a docker image.\n"+
-			  "Complete documentation is available at http://github.com/openshift/geard/tree/master/sti",
+		Use: "sti",
+		Long: "Source-to-images (STI) is a tool for building repeatable docker images.\n\n" +
+			"A command line interface that injects and assembles an application source into a docker image.\n" +
+			"Complete documentation is available at http://github.com/openshift/geard/tree/master/sti",
 		Run: func(c *cobra.Command, args []string) {
 			c.Help()
 		},
 	}
 	stiCmd.PersistentFlags().StringVarP(&(req.DockerSocket), "url", "U", "unix:///var/run/docker.sock", "Set the url of the docker socket to use")
 	stiCmd.PersistentFlags().BoolVar(&(req.Verbose), "verbose", false, "Enable verbose output")
+	stiCmd.PersistentFlags().StringVar(&(req.WorkingDirBase), "tempdirbase", "", "Path to the parent directory in which STI will create its temporary directories")
 	stiCmd.PersistentFlags().BoolVar(&(req.PreserveWorkingDir), "savetempdir", false, "Save the temporary directory used by STI instead of deleting it")
 
 	versionCmd := &cobra.Command{
